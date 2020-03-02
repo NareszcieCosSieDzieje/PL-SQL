@@ -1,0 +1,236 @@
+--1.
+
+CREATE TABLE DziennikOperacji(
+    table_name VARCHAR2(20) NOT NULL,
+    records_after NUMBER(10,0) DEFAULT 0 NOT NULL,
+    do_date TIMESTAMP NOT NULL,
+    operation VARCHAR2(10) NOT NULL,
+);
+
+
+CREATE OR REPLACE TRIGGER LogujOperacje
+AFTER INSERT OR DELETE OR UPDATE ON zespoly
+DECLARE
+ vMsg VARCHAR2(20);
+ vCount NUMBER(37);
+ vCurrentDateTime TimeStamp;
+  CURSOR operation_table IS 
+  SELECT * FROM dziennikoperacji 
+  WHERE do_date = vCurrentDateTime;
+BEGIN
+    CASE 
+    WHEN INSERTING THEN
+        vMsg := 'INSERTING';    
+    WHEN DELETING THEN
+        vMsg := 'DELETING'; 
+    WHEN UPDATING THEN
+        vMsg := 'UPDATING'; 
+    END CASE;
+    SELECT CURRENT_TIMESTAMP INTO vCurrentDateTime FROM DUAL; 
+    SELECT COUNT(*) INTO vCount FROM zespoly;
+    INSERT INTO dziennikoperacji(table_name, records_after, do_date, operation) 
+    VALUES('zespoly', vCount, vCurrentDateTime, vMsg);
+    FOR vElem IN operation_table LOOP
+        dbms_output.put_line('Modyfikowana tabela: ' || vElem.table_name);
+		dbms_output.put_line('Liczba rekordów po operacji: ' || TO_CHAR(vELem.records_after));
+        dbms_output.put_line('Data modyfikacji: ' || TO_CHAR(vElem.do_date));
+		dbms_output.put_line('Typ operacji: ' || vELem.operation);
+    END LOOP;
+END;
+
+--2.
+
+CREATE OR REPLACE TRIGGER PokazPlace
+BEFORE UPDATE OF placa_pod ON Pracownicy
+FOR EACH ROW
+BEGIN 
+	IF (:OLD.placa_pod IS NULL) AND (:NEW.placa_pod IS NOT NULL) THEN
+		DBMS_OUTPUT.PUT_LINE('Pracownik ' || :OLD.nazwisko);
+		DBMS_OUTPUT.PUT_LINE('Płaca przed modyfikacją: NULL');
+		DBMS_OUTPUT.PUT_LINE('Płaca po modyfikacji: ' || :NEW.placa_pod);
+	END IF;
+	IF (:OLD.placa_pod IS NOT NULL) AND (:NEW.placa_pod IS NULL) THEN
+		DBMS_OUTPUT.PUT_LINE('Pracownik ' || :OLD.nazwisko);
+		DBMS_OUTPUT.PUT_LINE('Płaca przed modyfikacją: ' || :OLD.placa_pod);
+		DBMS_OUTPUT.PUT_LINE('Płaca po modyfikacji: NULL');
+	END IF;
+	IF (:OLD.placa_pod <> :NEW.placa_pod) THEN
+	DBMS_OUTPUT.PUT_LINE('Pracownik ' || :OLD.nazwisko);
+	DBMS_OUTPUT.PUT_LINE('Płaca przed modyfikacją: ' || :OLD.placa_pod);
+	DBMS_OUTPUT.PUT_LINE('Płaca po modyfikacji: ' || :NEW.placa_pod);
+	END IF;
+END;
+
+--3.
+
+CREATE OR REPLACE TRIGGER UzupelnijPlace
+BEFORE INSERT ON Pracownicy
+FOR EACH ROW
+DECLARE
+	vPlaca etaty.placa_min%TYPE;
+BEGIN 
+	IF :NEW.placa_pod IS NULL THEN
+		IF :NEW.etat IS NULL THEN
+			:NEW.placa_pod := NULL;
+		ELSE 
+			SELECT placa_min INTO vPlaca 
+			FROM etaty 
+			WHERE nazwa = :NEW.etat;
+			:NEW.placa_pod := vPlaca;
+		END IF;
+	END IF;
+	IF :NEW.placa_dod IS NULL THEN
+		:NEW.placa_dod := 0;
+	END IF;
+END;
+
+
+--insert into pracownicy(ID_PRAC, NAZWISKO, ETAT, ID_SZEFA, ZATRUDNIONY, PLACA_POD, PLACA_DOD, ID_ZESP)
+--values(1,'koles','ASYSTENT',(SELECT ID_SZEFA FROM PRACOWNICY WHERE NAZWISKO = 'WEGLARZ'),(SELECT --CURRENT_DATE FROM DUAL), NULL , NULL, (SELECT ID_ZESP FROM ZESPOLY WHERE NAZWA LIKE '%a%') )
+
+--4.
+
+
+DECLARE
+vTopIdZesp NUMBER(10,0);
+sqlString VARCHAR(100);
+BEGIN
+	SELECT id_zesp INTO vTopIdZesp
+	FROM zespoly
+	ORDER BY id_zesp DESC
+	FETCH FIRST ROW ONLY;
+    vTopIdZesp := vTopIdZesp +1;
+    sqlString := 'CREATE SEQUENCE SEQ_Zespoly START WITH ' || TO_CHAR(vTopIdZesp) ||' INCREMENT BY 1 MINVALUE 1 MAXVALUE 100000';
+	EXECUTE IMMEDIATE sqlString;
+END;
+
+CREATE OR REPLACE TRIGGER UzupelnijID
+BEFORE INSERT ON Zespoly
+FOR EACH ROW
+DECLARE
+	vSeqVal NUMBER(37,0);
+BEGIN 
+	IF :NEW.id_zesp IS NULL THEN
+		SELECT SEQ_Zespoly.NEXTVAL INTO vSeqVal FROM DUAL;
+		:NEW.id_zesp := vSeqVal;
+	END IF;
+END;
+
+--insert into zespoly(nazwa,adres) values('nowy','adres');
+
+
+--5.
+
+CREATE OR REPLACE VIEW Szefowie(szef,pracownicy)
+AS SELECT szef.nazwisko, COUNT(podwladny.id_szefa)
+FROM pracownicy szef INNER JOIN pracownicy podwladny
+ON szef.id_prac = podwladny.id_szefa
+GROUP BY szef.nazwisko;
+
+
+DECLARE
+vTopIdZesp NUMBER(10,0);
+sqlString VARCHAR(100);
+BEGIN
+	SELECT id_zesp INTO vTopIdZesp
+	FROM zespoly
+	ORDER BY id_zesp DESC
+	FETCH FIRST ROW ONLY;
+    vTopIdZesp := vTopIdZesp +1;
+    sqlString := 'CREATE SEQUENCE SEQ_Zespoly START WITH ' || TO_CHAR(vTopIdZesp) ||' INCREMENT BY 1 MINVALUE 1 MAXVALUE 100000';
+	EXECUTE IMMEDIATE sqlString;
+END;
+
+CREATE OR REPLACE TRIGGER UsuwanieSzefa
+INSTEAD OF DELETE ON Szefowie
+FOR EACH ROW
+DECLARE
+	vDeleteSzef VARCHAR(100);
+	vSzef VARCHAR(20);
+    
+    CURSOR cSzefowie IS 
+	SELECT DISTINCT s.id_prac
+	FROM pracownicy s INNER JOIN pracownicy p ON s.id_prac = p.id_szefa;
+
+	CURSOR cPodwladni IS 
+	SELECT p.*
+	FROM pracownicy s INNER JOIN pracownicy p ON s.id_prac = p.id_szefa
+    WHERE s.nazwisko = :OLD.szef
+    FOR UPDATE;
+    
+    vPrac Pracownicy%ROWTYPE;
+    
+ 	PRACOWNIK_SZEF EXCEPTION;
+ 	PRAGMA EXCEPTION_INIT (PRACOWNIK_SZEF, -20001);
+BEGIN
+    FOR vPod IN cPodwladni LOOP
+        FOR vSzef IN cSzefowie LOOP
+            IF vPod.id_prac = vSzef.id_prac THEN
+                RAISE PRACOWNIK_SZEF;
+            END IF;
+        END LOOP;
+    END LOOP;
+    FOR vPod IN cPodwladni LOOP
+        DELETE FROM pracownicy WHERE CURRENT OF cPodwladni;
+    END LOOP;     
+    SELECT nazwisko INTO vSzef FROM pracownicy WHERE nazwisko = :OLD.szef;
+    vDeleteSzef := 'DELETE FROM pracownicy where nazwisko = ' || TRIM(BOTH '"' FROM vSzef);
+    EXECUTE IMMEDIATE vDeleteSzef;
+EXCEPTION
+	WHEN PRACOWNIK_SZEF THEN 
+      	dbms_output.put_line('Jeden z podwładnych usuwanego pracownika jest szefem innych pracowników. Usuwanie anulowane!'); 
+END;
+
+
+--delete from szefowie where szef = 'BLAZEWICZ';
+
+--6.
+
+ALTER TABLE zespoly ADD (
+    Liczba_Prac NUMBER(30)
+);
+
+
+UPDATE zespoly z
+SET liczba_prac = (SELECT COUNT(id_zesp) FROM pracownicy WHERE id_zesp = z.id_zesp GROUP BY id_zesp );
+
+UPDATE zespoly z 
+SET z.liczba_prac = CASE WHEN z.liczba_prac IS NULL THEN 0 
+                         ELSE z.liczba_prac END;
+
+CREATE OR REPLACE TRIGGER UsuwanieSzefa
+INSTEAD OF DELETE ON Szefowie
+FOR EACH ROW
+DECLARE
+
+
+CREATE OR REPLACE TRIGGER ZmianyWZespolach
+AFTER INSERT OR DELETE OR UPDATE ON Pracownicy
+FOR EACH ROW
+WHEN ( (NEW.id_zesp IS NOT NULL) OR (OLD.id_zesp IS NOT NULL) )
+DECLARE
+BEGIN
+    IF INSERTING THEN
+        EXECUTE IMMEDIATE 'UPDATE zespoly SET liczba_prac = liczba_prac + 1 WHERE id_zesp = ' || :NEW.id_zesp;  
+    ELSIF DELETING THEN
+        EXECUTE IMMEDIATE 'UPDATE zespoly SET liczba_prac = liczba_prac - 1 WHERE id_zesp = ' || :OLD.id_zesp;
+    ELSIF UPDATING THEN
+        EXECUTE IMMEDIATE 'UPDATE zespoly SET liczba_prac = liczba_prac - 1 WHERE id_zesp = ' || :OLD.id_zesp;
+        EXECUTE IMMEDIATE 'UPDATE zespoly SET liczba_prac = liczba_prac + 1 WHERE id_zesp = ' || :NEW.id_zesp;
+    END IF;
+END;
+
+
+--7.
+
+ALTER TABLE pracownicy
+DROP CONSTRAINT FK_ID_SZEFA;
+
+ALTER TABLE pracownicy
+ADD CONSTRAINT FK_ID_SZEFA_CASCADE
+FOREIGN KEY (id_szefa)
+REFERENCES pracownicy (id_prac)
+ON DELETE CASCADE;
+
+
+

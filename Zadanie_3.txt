@@ -1,0 +1,308 @@
+--1.
+DECLARE
+    CURSOR cAsystenci IS
+        SELECT nazwisko, zatrudniony
+        FROM pracownicy 
+        WHERE etat = 'ASYSTENT';
+BEGIN
+    FOR vAsystent IN cAsystenci LOOP
+        DBMS_OUTPUT.PUT_LINE( vAsystent.nazwisko || ' pracuje od ' || TO_CHAR(vAsystent.zatrudniony, 'dd-mm-yyyy') );
+    END LOOP;
+END;
+
+
+--2.
+DECLARE
+    CURSOR cPracownicy IS
+        SELECT nazwisko
+        FROM pracownicy
+        ORDER BY placa_pod DESC
+        FETCH FIRST 3 ROWS ONLY;
+BEGIN
+    FOR vPracownik IN cPracownicy LOOP
+        DBMS_OUTPUT.PUT_LINE( cPracownicy%ROWCOUNT || ' : ' || vPracownik.nazwisko );
+    END LOOP;
+END;
+
+ 
+
+--3.
+DECLARE
+    CURSOR cPracownicy IS
+        SELECT id_prac, zatrudniony FROM pracownicy
+		WHERE TO_CHAR(zatrudniony, 'DAY') = 'PONIEDZIAŁEK'
+        FOR UPDATE;
+BEGIN
+    FOR vPracownik IN cPracownicy LOOP
+        UPDATE pracownicy
+        SET placa_pod = placa_pod *1.2
+        WHERE CURRENT OF cPracownicy;
+    END LOOP;
+END;
+
+
+--4.
+DECLARE
+    CURSOR cPracownicy IS
+        SELECT id_prac, etat, placa_pod, placa_dod, nazwa
+        FROM pracownicy INNER JOIN zespoly
+        ON pracownicy.id_zesp = zespoly.id_zesp
+        FOR UPDATE;
+BEGIN
+    FOR vPracownik IN cPracownicy LOOP
+        IF vPracownik.nazwa = 'ALGORYTMY' THEN
+            vPracownik.placa_dod := COALESCE(vPracownik.placa_dod,0) + 100;
+        ELSIF vPracownik.nazwa = 'ADMINISTRACJA' THEN
+             vPracownik.placa_dod := COALESCE(vPracownik.placa_dod,0) + 150;
+        ELSIF vPracownik.etat = 'STAZYSTA' THEN 
+            DELETE FROM pracownicy WHERE 
+            CURRENT of cPracownicy;
+        END IF;
+    END LOOP; 
+END;
+
+
+--5.
+CREATE OR REPLACE PROCEDURE PokazPracownikowEtatu
+(pNazwaEtatu IN Pracownicy.etat%TYPE)
+IS
+    vPracownik Pracownicy%ROWTYPE;
+    CURSOR cPracownicyEtatu(pEtat Pracownicy.etat%TYPE) IS
+    SELECT * FROM pracownicy 
+    WHERE etat = pEtat;
+BEGIN
+    OPEN cPracownicyEtatu(pNazwaEtatu);
+    LOOP
+    	FETCH cPracownicyEtatu INTO vPracownik;
+    	EXIT WHEN cPracownicyEtatu%NOTFOUND;
+    	DBMS_OUTPUT.PUT_LINE(vPracownik.nazwisko);
+    END LOOP;
+    CLOSE cPracownicyEtatu;
+END PokazPracownikowEtatu;
+--EXECUTE PokazPracownikowEtatu('PROFESOR');
+
+--6.
+CREATE OR REPLACE PROCEDURE RaportKadrowy
+IS 
+	CURSOR cEtaty IS 
+	SELECT e.nazwa, COUNT(p.nazwisko) AS "LICZBA", AVG(placa_pod) AS "SREDNIA"
+	FROM pracownicy p INNER JOIN etaty e 
+	ON e.nazwa = p.etat
+	GROUP BY p.etat;
+	CURSOR cPracownicy(pEtat Etaty.nazwa%TYPE) IS
+	SELECT nazwisko, placa_pod 
+	FROM pracownicy 
+	WHERE etat = pEtat;
+BEGIN
+	FOR vEtat IN cEtaty LOOP
+		DBMS_OUTPUT.PUT_LINE('ETAT: ' || vEtat.nazwa);
+		FOR vPrac IN cPracownicy(vEtat.nazwa) LOOP
+			DBMS_OUTPUT.PUT_LINE(cPracownicy%ROWCOUNT || '.' || vPrac.nazwisko || ', pensja: ' || vPrac.placa_pod);
+		END LOOP; 
+		DBMS_OUTPUT.PUT_LINE('Liczba pracowników: ' || vEtat.LICZBA);
+		IF vEtat.LICZBA > 0 THEN
+			DBMS_OUTPUT.PUT_LINE('Średnia pensja: ' || vEtat.SREDNIA);
+		ELSE 
+			DBMS_OUTPUT.PUT_LINE('Średnia pensja: BRAK');
+		END IF;
+		DBMS_OUTPUT.NEW_LINE;
+	END LOOP;
+END RaportKadrowy;
+--EXECUTE RaportKadrowy;
+
+--7.
+
+CREATE OR REPLACE PACKAGE BODY IntZespoly IS
+
+PROCEDURE dodajZespol(pId_Zesp NUMBER, pNazwa VARCHAR, pAdres VARCHAR) IS
+BEGIN 
+	INSERT INTO Zespoly(id_zesp,nazwa,adres)
+	VALUES(pId_Zesp, pNazwa, pAdres);
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE('Nie udało się dodać zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Dodano zespół.');
+	END IF;
+END dodajZespol;
+
+PROCEDURE usunZespol(pId_Zesp NUMBER) IS
+BEGIN
+	DELETE FROM zespoly
+	WHERE id_zesp = pId_Zesp;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się usunąć zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Usunięto zespół.');
+	END IF;
+END usunZespol;
+
+PROCEDURE usunZespol(pNazwa VARCHAR) IS
+BEGIN
+	DELETE FROM zespoly
+	WHERE nazwa = pNazwa;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się usunąć zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Usunięto zespół.');
+	END IF;
+END usunZespol;
+
+PROCEDURE zmienDane(pNazwa VARCHAR, pAdres VARCHAR, pID NUMBER) IS
+BEGIN
+	UPDATE zespoly
+	SET nazwa = pNazwa, adres = pAdres
+	WHERE id_zesp = pID;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się zmienić danych zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Zmodyfikowano zespół. Liczba zmodyfikowanych rekordów: ' || SQL%ROWCOUNT);
+	END IF;
+END zmienDane;
+
+FUNCTION idZespolu(pNazwa VARCHAR)
+RETURN Zespoly.id_zesp%TYPE IS
+vID Zespoly.id_zesp%TYPE;
+BEGIN
+SELECT id_zesp
+INTO vID
+FROM zespoly
+WHERE nazwa = pNazwa;
+RETURN vID;
+END idZespolu;
+
+FUNCTION nazwaZespolu(pID NUMBER)
+RETURN Zespoly.nazwa%TYPE IS
+vNazwa Zespoly.nazwa%TYPE;
+BEGIN 
+SELECT nazwa 
+INTO vNazwa
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vNazwa;
+END;
+
+FUNCTION adresZespolu(pID NUMBER)
+RETURN Zespoly.adres%TYPE IS
+vAdres Zespoly.adres%TYPE;
+BEGIN
+SELECT adres 
+INTO vAdres
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vAdres;
+END adresZespolu;
+
+END IntZespoly;
+
+--8.
+CREATE OR REPLACE PACKAGE IntZespoly IS
+
+PROCEDURE dodajZespol(pId_Zesp NUMBER, pNazwa VARCHAR, pAdres VARCHAR);
+PROCEDURE usunZespol(pId_Zesp NUMBER);
+PROCEDURE usunZespol(pNazwa VARCHAR);
+PROCEDURE zmienDane(pNazwa VARCHAR, pAdres VARCHAR, pID NUMBER);
+FUNCTION idZespolu(pNazwa VARCHAR)
+RETURN Zespoly.id_zesp%TYPE;
+FUNCTION nazwaZespolu(pID NUMBER)
+RETURN Zespoly.nazwa%TYPE;
+FUNCTION adresZespolu(pID NUMBER)
+RETURN Zespoly.adres%TYPE;
+
+exWrongAttribute EXCEPTION;
+--exWrongName EXCEPTION;
+--exWrongID EXCEPTION;
+exTakenID EXCEPTION;
+
+PRAGMA EXCEPTION_INIT(exWrongAttribute, -00904);
+PRAGMA EXCEPTION_INIT(exTakenID, -000001);
+
+END IntZespoly;
+
+---------------------------BODY---------------------------------------------------
+CREATE OR REPLACE PACKAGE BODY IntZespoly IS
+
+PROCEDURE dodajZespol(pId_Zesp NUMBER, pNazwa VARCHAR, pAdres VARCHAR) IS
+BEGIN 
+	INSERT INTO Zespoly(id_zesp,nazwa,adres)
+	VALUES(pId_Zesp, pNazwa, pAdres);
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE('Nie udało się dodać zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Dodano zespół.');
+	END IF;
+END dodajZespol;
+
+PROCEDURE usunZespol(pId_Zesp NUMBER) IS
+BEGIN
+	DELETE FROM zespoly
+	WHERE id_zesp = pId_Zesp;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się usunąć zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Usunięto zespół.');
+	END IF;
+END usunZespol;
+
+PROCEDURE usunZespol(pNazwa VARCHAR) IS
+BEGIN
+	DELETE FROM zespoly
+	WHERE nazwa = pNazwa;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się usunąć zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Usunięto zespół.');
+	END IF;
+END usunZespol;
+
+PROCEDURE zmienDane(pNazwa VARCHAR, pAdres VARCHAR, pID NUMBER) IS
+BEGIN
+	UPDATE zespoly
+	SET nazwa = pNazwa, adres = pAdres
+	WHERE id_zesp = pID;
+	IF SQL%NOTFOUND THEN
+		DBMS_OUTPUT.PUT_LINE ('Nie udało się zmienić danych zespołu.');
+	ELSE 
+		DBMS_OUTPUT.PUT_LINE('Zmodyfikowano zespół. Liczba zmodyfikowanych rekordów: ' || SQL%ROWCOUNT);
+	END IF;
+END zmienDane;
+
+FUNCTION idZespolu(pNazwa VARCHAR)
+RETURN Zespoly.id_zesp%TYPE IS
+vID Zespoly.id_zesp%TYPE;
+BEGIN
+SELECT id_zesp
+INTO vID
+FROM zespoly
+WHERE nazwa = pNazwa;
+RETURN vID;
+END idZespolu;
+
+FUNCTION nazwaZespolu(pID NUMBER)
+RETURN Zespoly.nazwa%TYPE IS
+vNazwa Zespoly.nazwa%TYPE;
+BEGIN 
+SELECT nazwa 
+INTO vNazwa
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vNazwa;
+EXCEPTION 
+WHEN NO_DATA_FOUND THEN
+ 	RAISE exWrongAttribute;
+END nazwaZespolu;
+
+FUNCTION adresZespolu(pID NUMBER)
+RETURN Zespoly.adres%TYPE IS
+vAdres Zespoly.adres%TYPE;
+BEGIN
+SELECT adres 
+INTO vAdres
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vAdres;
+EXCEPTION
+WHEN NO_DATA_FOUND  THEN
+ 	RAISE exWrongAttribute;
+END adresZespolu;
+
+END IntZespoly;

@@ -1,0 +1,276 @@
+--1.
+
+CREATE OR REPLACE PROCEDURE NowyPracownik 
+(pNazwisko IN Pracownicy.nazwisko%TYPE,
+pZespol IN Zespoly.nazwa%TYPE,
+pSzef IN Pracownicy.nazwisko%TYPE,
+pPlaca IN Pracownicy.placa_pod%TYPE) IS
+vStanowisko Pracownicy.etat%TYPE DEFAULT 'STAZYSTA';
+vZatrudniony Pracownicy.zatrudniony%TYPE DEFAULT CURRENT_DATE; 
+vIdSzefa Pracownicy.id_szefa%TYPE;
+vIdZesp Zespoly.id_zesp%TYPE;
+vMaxId Pracownicy.id_prac%TYPE;
+BEGIN
+SELECT max(id_prac)
+INTO vMaxId
+FROM pracownicy;
+SELECT id_prac 
+INTO vIdSzefa 
+FROM pracownicy
+WHERE nazwisko = pSzef;
+SELECT id_zesp
+INTO vIdZesp
+FROM zespoly
+WHERE nazwa = pZespol;
+INSERT INTO pracownicy 
+(id_prac, nazwisko,etat,id_szefa,
+zatrudniony, placa_pod, id_zesp) 
+VALUES(vMaxId+10, pNazwisko, vStanowisko, vIdSzefa, vZatrudniony,
+pPlaca, vIdZesp);
+END NowyPracownik;
+/
+
+--2.
+
+CREATE or REPLACE FUNCTION PlacaNetto
+(pPlacaBrutto IN NUMBER,
+pStawkaPodatku IN NUMBER DEFAULT 20)
+RETURN NUMBER IS
+vNetto NUMBER;
+vStawka NUMBER;
+BEGIN
+vStawka := pStawkaPodatku/100;
+vNetto := pPlacaBrutto*(1.0-vStawka);
+RETURN vNetto;
+END PlacaNetto;
+/
+
+--3.
+CREATE or REPLACE FUNCTION Silnia
+(n IN NUMBER)
+RETURN NATURAL IS
+vSilnia NATURAL:=1;
+vCounter NATURAL:=n;
+BEGIN
+WHILE vCounter > 0 LOOP
+vSilnia := vSilnia*vCounter;
+vCounter:= vCounter-1;
+END LOOP;
+RETURN vSilnia;
+END Silnia;
+
+--4.
+CREATE or REPLACE FUNCTION SilniaRek
+(n IN NUMBER)
+RETURN NATURAL IS
+vSilnia NATURAL;
+BEGIN
+IF n = 1 THEN
+RETURN 1;
+ELSE
+vSilnia:=n * (Silnia(n-1));
+RETURN vSilnia;
+END IF;
+END SilniaRek;
+/
+
+--5. 
+
+CREATE or REPLACE FUNCTION IleLat
+
+(pData IN DATE) 
+RETURN DATE IS
+vIleUplynelo NUMBER;
+BEGIN
+vIleUplynelo := (EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM pData));
+RETURN vIleUplynelo;
+END IleLat;
+/
+
+--6.
+
+CREATE OR REPLACE PACKAGE Konwersja IS
+FUNCTION Cels_To_Fahr(pCels NUMBER)
+RETURN NUMBER;
+FUNCTION Fahr_To_Cels(pFahr NUMBER)
+RETURN NUMBER;
+END Konwersja;
+
+ 
+
+CREATE OR REPLACE PACKAGE BODY Konwersja IS
+FUNCTION Cels_To_Fahr
+(pCels NUMBER)
+RETURN NUMBER IS
+vFahr NUMBER; 
+BEGIN
+vFahr := 9/5 * pCels + 32;
+RETURN vFahr; 
+END;
+
+FUNCTION Fahr_To_Cels
+(pFahr NUMBER)
+RETURN NUMBER IS
+vCels NUMBER; 
+BEGIN
+vCels := 5/9 * (pFahr-32);
+RETURN vCels; 
+END;
+
+END Konwersja;
+
+ 
+
+--7.
+
+CREATE OR REPLACE PACKAGE Zmienne IS
+
+vLicznik NUMBER ;
+PROCEDURE ZwiekszLicznik;
+PROCEDURE ZmniejszLicznik;
+FUNCTION PokazLicznik
+RETURN NUMBER;
+
+END Zmienne;
+
+ 
+
+
+CREATE OR REPLACE PACKAGE BODY Zmienne IS
+PROCEDURE ZwiekszLicznik
+IS
+BEGIN 
+vLicznik := vLicznik + 1;
+DBMS_OUTPUT.PUT_LINE('Zwiększono!');
+END;
+
+PROCEDURE ZmniejszLicznik
+IS
+BEGIN
+vLicznik := vLicznik - 1;
+DBMS_OUTPUT.PUT_LINE('Zmniejszono!');
+END;
+
+FUNCTION PokazLicznik 
+RETURN NUMBER 
+IS
+BEGIN
+RETURN vLicznik; 
+END;
+
+BEGIN 
+vLicznik := 0;
+DBMS_OUTPUT.PUT_LINE('Zainicjalizowano.');
+END Zmienne;
+
+ 
+
+--8.
+
+CREATE OR REPLACE PACKAGE IntZespoly IS
+
+PROCEDURE dodajZespol(pId_Zesp NUMBER, pNazwa VARCHAR, pAdres VARCHAR);
+PROCEDURE usunZespol(pId_Zesp NUMBER);
+PROCEDURE usunZespol(pNazwa VARCHAR);
+PROCEDURE zmienDane(pNazwa VARCHAR, pAdres VARCHAR, pID NUMBER);
+FUNCTION idZespolu(pNazwa VARCHAR)
+RETURN Zespoly.id_zesp%TYPE;
+FUNCTION nazwaZespolu(pID NUMBER)
+RETURN Zespoly.nazwa%TYPE;
+FUNCTION adresZespolu(pID NUMBER)
+RETURN Zespoly.adres%TYPE;
+END IntZespoly;
+
+ 
+
+CREATE OR REPLACE PACKAGE BODY IntZespoly IS
+
+PROCEDURE dodajZespol(pId_Zesp NUMBER, pNazwa VARCHAR, pAdres VARCHAR) IS
+BEGIN 
+INSERT INTO Zespoly(id_zesp,nazwa,adres)
+VALUES(pId_Zesp, pNazwa, pAdres);
+END dodajZespol;
+
+PROCEDURE usunZespol(pId_Zesp NUMBER) IS
+BEGIN
+DELETE FROM zespoly
+WHERE id_zesp = pId_Zesp;
+END usunZespol;
+
+PROCEDURE usunZespol(pNazwa VARCHAR) IS
+BEGIN
+DELETE FROM zespoly
+WHERE nazwa = pNazwa;
+END usunZespol;
+
+PROCEDURE zmienDane(pNazwa VARCHAR, pAdres VARCHAR, pID NUMBER) IS
+BEGIN
+UPDATE zespoly
+SET nazwa = pNazwa, adres = pAdres
+WHERE id_zesp = pID;
+END zmienDane;
+
+FUNCTION idZespolu(pNazwa VARCHAR)
+RETURN Zespoly.id_zesp%TYPE IS
+vID Zespoly.id_zesp%TYPE;
+BEGIN
+SELECT id_zesp
+INTO vID
+FROM zespoly
+WHERE nazwa = pNazwa;
+RETURN vID;
+END idZespolu;
+
+FUNCTION nazwaZespolu(pID NUMBER)
+RETURN Zespoly.nazwa%TYPE IS
+vNazwa Zespoly.nazwa%TYPE;
+BEGIN 
+SELECT nazwa 
+INTO vNazwa
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vNazwa;
+END;
+
+FUNCTION adresZespolu(pID NUMBER)
+RETURN Zespoly.adres%TYPE IS
+vAdres Zespoly.adres%TYPE;
+BEGIN
+SELECT adres 
+INTO vAdres
+FROM zespoly
+WHERE id_zesp = pID;
+RETURN vAdres;
+END adresZespolu;
+
+END IntZespoly;
+
+ 
+
+--9.
+
+SELECT object_name, object_type, status
+FROM User_Objects
+WHERE object_type = 'PROCEDURE' OR object_type = 'FUNCTION' OR object_type = 'PACKAGE'
+ORDER BY object_name;
+
+SELECT text
+FROM User_Source
+WHERE type = 'PROCEDURE'
+UNION ALL
+SELECT text
+FROM User_Source
+WHERE type = 'FUNCTION'
+UNION ALL
+SELECT text
+FROM User_Source
+WHERE type = 'PACKAGE';
+
+ 
+
+--10.
+DROP PROCEDURE Silnia;
+DROP PROCEDURE SilniaRek;
+DROP FUNCTION IleLat;
+--11.
+DROP PACKAGE Konwersja;

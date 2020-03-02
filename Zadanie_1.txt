@@ -1,0 +1,146 @@
+set serveroutput on size unlimited
+
+--1.
+DECLARE
+vTekst VARCHAR2(50) := 'Witaj, świecie!';
+vLiczba NUMBER(38,3) := 1000.456;
+BEGIN
+-- NULL
+DBMS_OUTPUT.PUT_LINE('vTekst: ' || vTekst); 
+-- DBMS_OUTPUT.NEW_LINE;
+DBMS_OUTPUT.PUT_LINE('vLiczba: ' || vLiczba);
+END;
+
+
+--2.
+DECLARE
+vTekst VARCHAR2(50) := 'Witaj, świecie!';
+vLiczba NUMBER(38,3) := 1000.456;
+BEGIN
+vTekst := vTekst || ' Witaj, nowy dniu!';
+vLiczba := vLiczba + POWER(10,15); --10**15
+DBMS_OUTPUT.PUT_LINE('vTekst: ' || vTekst); 
+DBMS_OUTPUT.PUT_LINE('vLiczba: ' || vLiczba);
+END;
+
+--3.
+DECLARE
+vLiczba1 NUMBER(9,7) := 10.2356000;
+vLiczba2 NUMBER(8,7) := 0.0000001;
+BEGIN
+--NULL
+DBMS_OUTPUT.PUT_LINE('vLiczba1 + vLiczba2: ' || TO_CHAR(vLiczba1 + vLiczba2) );
+END;
+
+--4.
+DECLARE
+cPi CONSTANT NUMBER(3,2) := 3.14;
+vPromien NUMBER(3,1) DEFAULT 5;
+BEGIN
+DBMS_OUTPUT.PUT_LINE('Obwód koła o promieniu równym ' || vPromien || ': ' || 2*cPi*vPromien );
+DBMS_OUTPUT.PUT_LINE('Pole koła o promieniu równym ' || vPromien || ': ' || cPi*POWER(vPromien,2) );
+END;
+
+--5.
+DECLARE
+vNazwisko Pracownicy.nazwisko%TYPE;
+vPlaca Pracownicy.placa_pod%TYPE;
+vEtat Pracownicy.etat%TYPE;
+BEGIN
+SELECT MAX(placa_pod)
+INTO vPlaca
+from pracownicy;
+SELECT nazwisko, etat
+INTO vNazwisko, vEtat 
+FROM pracownicy
+WHERE placa_pod = vPlaca; 
+DBMS_OUTPUT.PUT_LINE('Najlepiej zarabia pracownik ' || vNazwisko);
+DBMS_OUTPUT.PUT_LINE('Pracuje on jako ' || vEtat);
+END;
+
+--6.
+DECLARE
+TYPE tMaxPracownik IS RECORD
+(nazwisko Pracownicy.nazwisko%TYPE,
+etat Pracownicy.etat%TYPE);
+vPlaca Pracownicy.placa_pod%TYPE;
+vPracownik tMaxPracownik;
+BEGIN 
+SELECT MAX(placa_pod)
+INTO vPlaca
+FROM pracownicy;
+SELECT nazwisko, etat
+INTO vPracownik.nazwisko, vPracownik.etat 
+FROM pracownicy
+WHERE placa_pod = vPlaca; 
+DBMS_OUTPUT.PUT_LINE('Najlepiej zarabia pracownik ' || vPracownik.nazwisko);
+DBMS_OUTPUT.PUT_LINE('Pracuje on jako ' || vPracownik.etat);
+END;
+
+--7.
+DECLARE
+SUBTYPE tPieniadze IS NUMBER(6,1);
+vRocznePieniadze tPieniadze;
+vNazwisko Pracownicy.nazwisko%TYPE := 'SLOWINSKI';
+BEGIN 
+SELECT (placa_pod + COALESCE(placa_dod,0))*12
+INTO vRocznePieniadze
+FROM pracownicy
+WHERE nazwisko = vNazwisko;
+DBMS_OUTPUT.PUT_LINE('Pracownik ' || vNazwisko || ' zarabia rocznie ' || vRocznePieniadze);
+END;
+
+ 
+
+--8.
+DECLARE
+vDate TIMESTAMP;
+vSeconds NUMBER(2,0);
+BEGIN 
+SELECT sysdate
+INTO vDate
+FROM dual;
+--DBMS_OUTPUT.PUT_LINE(vDate);
+vSeconds := EXTRACT(SECOND FROM vDate);
+--DBMS_OUTPUT.PUT_LINE(TO_CHAR(vSeconds)); 
+WHILE vSeconds != 25 LOOP
+vSeconds := EXTRACT(SECOND FROM vDate);
+END LOOP;
+DBMS_OUTPUT.PUT_LINE('Nadeszła 25 sekunda!');
+END;
+
+--9.
+DECLARE
+vWynik NUMBER(20) := 1; 
+vIlosc NUMBER(10) := 8; 
+BEGIN 
+WHILE vIlosc > 1 LOOP 
+vWynik := vIlosc*vWynik; 
+vIlosc := vIlosc - 1; 
+END LOOP; 
+dbms_output.put_line(vWynik); 
+END;
+
+--10.
+
+DECLARE
+vStart DATE := TO_DATE('2001/01/01', 'yyyy/mm/dd'); 
+vEnd DATE := TO_DATE('2100/12/31', 'yyyy/mm/dd'); 
+vCurrentDay NUMBER(5);
+vCurrentDayName VARCHAR2(20);
+BEGIN
+vEnd := vEnd + interval '1' day;
+vStart := vStart + interval '12' day;
+WHILE vStart < vEnd LOOP
+SELECT EXTRACT(DAY FROM (vStart) )
+INTO vCurrentDay
+FROM DUAL; 
+SELECT TO_CHAR(vStart, 'DAY') 
+INTO vCurrentDayName
+FROM dual;
+IF (UPPER(vCurrentDayName) LIKE '%PIĄTEK%') THEN
+dbms_output.put_line(TO_CHAR(vStart)); 
+END IF;
+vStart := vStart + interval '1' month;
+END LOOP;
+END;
